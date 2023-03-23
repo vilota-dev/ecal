@@ -121,6 +121,8 @@ endif()
 
 # This should be ON, unless build ecal hdf5 for Matlab usage
 option(ECAL_LINK_HDF5_SHARED                   "Link shared libs of HDF5"                                          ON)
+set(ECAL_THIRDPARTY_PROTOBUF_PROTOC_EXECUTABLE "" CACHE FILEPATH "Location of protoc to use for eCAL. Can be necessary to be set for proper cross compilation")
+
 
 option(CPACK_PACK_WITH_INNOSETUP               "Create Innosetup installer for the Windows build"                  ON)
 

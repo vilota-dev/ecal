@@ -34,6 +34,18 @@ function(PROTOBUF_GENERATE_CPP_EXT SRCS_RET HDRS_RET PROTO_OUT_DIR_RET PROTO_ROO
     endif ()     	
   endif ()
 
+  if (NOT TARGET eCAL::protoc)
+    if (ECAL_THIRDPARTY_PROTOBUF_PROTOC_EXECUTABLE)
+      ADD_EXECUTABLE(eCAL::protoc IMPORTED)
+      SET_TARGET_PROPERTIES(eCAL::protoc PROPERTIES
+        IMPORTED_LOCATION "${ECAL_THIRDPARTY_PROTOBUF_PROTOC_EXECUTABLE}"
+      )  
+    else ()
+      add_executable(eCAL::protoc ALIAS protobuf::protoc)
+    endif ()
+  endif()
+
+
   set(PROTO_OUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/protobuf")
   file(MAKE_DIRECTORY ${PROTO_OUT_DIR})  
   get_filename_component(PROTO_ROOT ${PROTO_ROOT} ABSOLUTE)
@@ -52,9 +64,9 @@ function(PROTOBUF_GENERATE_CPP_EXT SRCS_RET HDRS_RET PROTO_OUT_DIR_RET PROTO_ROO
     add_custom_command(
       OUTPUT "${PROTO_OUT_DIR}/${REL_FIL_WE}.pb.cc"
              "${PROTO_OUT_DIR}/${REL_FIL_WE}.pb.h"
-      COMMAND protobuf::protoc
+      COMMAND eCAL::protoc
       ARGS "--proto_path=${PROTO_ROOT}" "--cpp_out=${PROTO_OUT_DIR}" ${ABS_FIL}
-      DEPENDS ${ABS_FIL} protobuf::protoc
+      DEPENDS ${ABS_FIL} eCAL::protoc
       COMMENT "Running C++ protocol buffer compiler on ${ABS_FIL}"
       VERBATIM )
 
