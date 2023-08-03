@@ -88,6 +88,24 @@ protected:
   eCAL::pb::Sample    m_ecal_sample;
 };
 
+/**
+ * @brief Struct for storing statistics for each sample for each ID
+ * Keeps track of the time point the header received, and the callbacks will check if 1 second has passed
+ * since the first message was received. Will be printed out once 1 second mark has passed, and is cleared from the
+ * m_stats_map afterwards. Only the received param will change. The rest will remain the same from construction.
+ *
+ * @param received          Number of received messages
+ * @param total             Total number of messages (from the header message)
+ * @param slot              Shared pointer to the receive slot
+ * @param m_first_received  Time point of the first received message
+ */
+struct SampleStats {
+  int received;
+  int total;
+  std::shared_ptr<CReceiveSlot> slot;
+  std::chrono::steady_clock::time_point m_first_received;
+};
+
 class CSampleReceiver
 {
   class CSampleReceiveSlot : public CReceiveSlot
@@ -121,6 +139,6 @@ protected:
   std::chrono::steady_clock::time_point m_cleanup_start;
 
   // Store information for each message id
-  std::unordered_map<int32_t, int32_t> received;
-  std::unordered_map<int32_t, int32_t> total;
+  typedef std::unordered_map<int32_t, std::shared_ptr<SampleStats>> StatsMapT;
+  StatsMapT m_stats_map;
 };

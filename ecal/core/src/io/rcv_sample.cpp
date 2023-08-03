@@ -342,9 +342,22 @@ int CSampleReceiver::Process(const char* sample_buffer_, size_t sample_buffer_le
       receive_slot = std::make_shared<CSampleReceiveSlot>(CSampleReceiveSlot(this));
       m_receive_slot_map[ecal_message->header.id] = receive_slot;
 
-      // Add statistics
-      received[ecal_message->header.id] = 0;
-      total[ecal_message->header.id] = ecal_message->header.num;
+      // Add statistics class. Copy the shared pointer to the ReceiveSlot struct as well.
+      // We first check if there is an object for this ID already, since we might get a content packet before
+      // the header arrives.
+      auto stats_iter = m_stats_map.find(ecal_message->header.id);
+      if (stats_iter != m_stats_map.end()) {
+        stats_iter->second->received++;
+        stats_iter->second->total = ecal_message->header.num;
+        stats_iter->second->slot = receive_slot;
+      } else {
+        std::shared_ptr<SampleStats> stats = std::make_shared<SampleStats>();
+        stats->received = 0;
+        stats->total = ecal_message->header.num;
+        stats->slot = receive_slot;
+        stats->m_first_received = std::chrono::steady_clock::now();
+        m_stats_map.insert({ecal_message->header.id, stats});
+      }
 
       // apply message
       receive_slot->ApplyMessage(*ecal_message);
@@ -353,11 +366,19 @@ int CSampleReceiver::Process(const char* sample_buffer_, size_t sample_buffer_le
     // if we have a payload package
     // we check for an existing receive slot and apply the data to it
     case msg_type_content: {
-      received[ecal_message->header.id]++;
+      auto stats_iter = m_stats_map.find(ecal_message->header.id);
+      if (stats_iter != m_stats_map.end()) {
+        stats_iter->second->received++;
+      } else {
+        std::shared_ptr<SampleStats> stats = std::make_shared<SampleStats>();
+        stats->received = 1;
+        stats->total = -1; // Needs to be set by header packet instead
+        stats->m_first_received = std::chrono::steady_clock::now();
+        m_stats_map.insert({ecal_message->header.id, stats});
+      }
 
       // first data package ?
-      if (ecal_message->header.num == 0)
-      {
+      if (ecal_message->header.num == 0) {
         // read sample_name size
         unsigned short sample_name_size = 0;
         memcpy(&sample_name_size, ecal_message->payload, 2);
@@ -374,7 +395,6 @@ int CSampleReceiver::Process(const char* sample_buffer_, size_t sample_buffer_le
             // log timeouted slot
             eCAL::Logging::Log(log_level_debug3, "CSampleReceiver::Receive - DISCARD PACKAGE FOR TOPIC: " + sample_name);
   #endif
-            std::cout << received[riter->second->m_message_id] << "," << total[riter->second->m_message_id] << ",fail" <<"\n";
             m_receive_slot_map.erase(riter);
             break;
           }
@@ -383,8 +403,7 @@ int CSampleReceiver::Process(const char* sample_buffer_, size_t sample_buffer_le
 
       // process data package
       auto iter = m_receive_slot_map.find(ecal_message->header.id);
-      if (iter != m_receive_slot_map.end())
-      {
+      if (iter != m_receive_slot_map.end()) {
         // apply message
         iter->second->ApplyMessage(*ecal_message);
       }
@@ -397,42 +416,57 @@ int CSampleReceiver::Process(const char* sample_buffer_, size_t sample_buffer_le
   // cleanup finished or zombie received slots
   auto diff_time = std::chrono::steady_clock::now() - m_cleanup_start;
   std::chrono::duration<double> step_time = std::chrono::milliseconds(NET_UDP_RECBUFFER_CLEANUP);
-  if (diff_time > step_time)
-  {
+  if (diff_time > step_time) {
     m_cleanup_start = std::chrono::steady_clock::now();
 
-    for (ReceiveSlotMapT::iterator riter = m_receive_slot_map.begin(); riter != m_receive_slot_map.end();)
-    {
+    for (ReceiveSlotMapT::iterator riter = m_receive_slot_map.begin(); riter != m_receive_slot_map.end();) {
       bool finished = riter->second->HasFinished();
       bool timeouted = riter->second->HasTimedOut(step_time);
-      if (finished || timeouted)
-      {
+      if (finished || timeouted) {
 #ifndef NDEBUG
         int32_t total_len = riter->second->GetMessageTotalLength();
         int32_t current_len = riter->second->GetMessageCurrentLength();
 #endif
-        std::string status;
-        if (riter->second->HasCompleted()) {
-          status = "completed";
-        } else if (riter->second->HasAborted()) {
-          status = "aborted";
-        } else {
-          status = "timeout";
-        }
-        std::cout << received[riter->second->m_message_id] << "," << total[riter->second->m_message_id] << "," << status << "\n";
         riter = m_receive_slot_map.erase(riter);
 #ifndef NDEBUG
         // log timeouted slot
-        if (timeouted)
-        {
+        if (timeouted) {
           eCAL::Logging::Log(log_level_debug3, "CSampleReceiver::Receive - TIMEOUT (TotalLength / CurrentLength):  " + std::to_string(total_len) + " / " + std::to_string(current_len));
         }
 #endif
       }
-      else
-      {
+      else {
         ++riter;
       }
+    }
+  }
+
+  // Clean up for statistics
+  auto now = std::chrono::steady_clock::now();
+  for (StatsMapT::iterator stats_iter = m_stats_map.begin(); stats_iter != m_stats_map.end();) {
+    // First we grab the time. There's always guaranteed to be a m_first_received, since we insert it for
+    // every time we insert a new entry to the m_stats_map
+    auto first_received = stats_iter->second->m_first_received;
+    // If one second has passed since the first packet was received, we print the statistics and remove the entry.
+    // Otherwise, we keep the entry and move on.
+    if (now - first_received >= std::chrono::seconds(2)) {
+      // slot might be null pointer, keep checking for ReceiveSlot
+      if (stats_iter->second->slot) {
+        std::string status;
+        if (stats_iter->second->slot->HasCompleted()) {
+          status = "completed";
+        } else if (stats_iter->second->slot->HasAborted()) {
+          status = "aborted";
+        } else {
+          status = "timeout";
+        }
+        std::cout << stats_iter->second->received << "," << stats_iter->second->total << "," << status << "\n";
+        stats_iter = m_stats_map.erase(stats_iter);
+      } else {
+        stats_iter++;
+      }
+    } else {
+      ++stats_iter;
     }
   }
 
