@@ -274,152 +274,124 @@ int CSampleReceiver::Process(const char* sample_buffer_, size_t sample_buffer_le
   }
 
   // check integrity
-  switch (ecal_message->header.type)
-  {
-  case msg_type_header:
-    break;
-  case msg_type_content:
-  case msg_type_header_with_content:
-    if (sample_buffer_len_ < sizeof(SUDPMessageHead) + static_cast<size_t>(ecal_message->header.len))
+  switch (ecal_message->header.type) {
+    case msg_type_header:
+      break;
+    case msg_type_content:
+    case msg_type_header_with_content:
+      if (sample_buffer_len_ < sizeof(SUDPMessageHead) + static_cast<size_t>(ecal_message->header.len))
+        return(0);
+      break;
+    default:
       return(0);
-    break;
-  default:
-    return(0);
   }
 
-#ifndef NDEBUG
-  // log it
-  switch (ecal_message->header.type)
-  {
-  case msg_type_header_with_content:
-    eCAL::Logging::Log(log_level_debug4, "UDP Sample Received - HEADER_WITH_CONTENT");
-    break;
-  case msg_type_header:
-    eCAL::Logging::Log(log_level_debug4, "UDP Sample Received - HEADER");
-    break;
-  case msg_type_content:
-    eCAL::Logging::Log(log_level_debug4, "UDP Sample Received - CONTENT");
-    break;
-  }
-#endif
+  // ------------------- Start of statistics ------------------------
+//  switch (ecal_message->header.type)
+//  {
+//    case msg_type_header_with_content:
+//      std::cout << "UDP Sample Received - HEADER_WITH_CONTENT\n";
+//      break;
+//    case msg_type_header:
+//      std::cout << "UDP Sample Received - HEADER\n";
+//      break;
+//    case msg_type_content:
+//      std::cout << "UDP Sample Received - CONTENT\n";
+//      break;
+//  }
+  // ------------------- End of statistics ------------------------
 
-  switch (ecal_message->header.type)
-  {
-  case msg_type_header_with_content:
-  {
-    // read sample_name size
-    unsigned short sample_name_size = 0;
-    memcpy(&sample_name_size, ecal_message->payload, 2);
-    // read sample_name
-    std::string sample_name = ecal_message->payload + sizeof(sample_name_size);
+//  std::cout << "ID: " << ecal_message->header.id << "\n";
+//  std::cout << "Num: " << ecal_message->header.num << "\n";
+//  std::cout << "Len: " << ecal_message->header.len << "\n";
 
-    if (HasSample(sample_name))
-    {
-      // read sample
-      if (!m_ecal_sample.ParseFromArray(ecal_message->payload + static_cast<size_t>(sizeof(sample_name_size) + sample_name_size), static_cast<int>(static_cast<size_t>(ecal_message->header.len) - (sizeof(sample_name_size) + sample_name_size)))) return(0);
-
-#ifndef NDEBUG
-      // log it
-      eCAL::Logging::Log(log_level_debug3, sample_name + "::UDP Sample Completed");
-
-      // log it
-      switch (m_ecal_sample.cmd_type())
-      {
-      case eCAL::pb::bct_none:
-        eCAL::Logging::Log(log_level_debug4, sample_name + "::UDP Sample Command Type - NONE");
-        break;
-      case eCAL::pb::bct_set_sample:
-        eCAL::Logging::Log(log_level_debug4, sample_name + "::UDP Sample Command Type - SAMPLE");
-        break;
-      case eCAL::pb::bct_reg_publisher:
-        eCAL::Logging::Log(log_level_debug4, sample_name + "::UDP Sample Command Type - REGISTER PUBLISHER");
-        break;
-      case eCAL::pb::bct_reg_subscriber:
-        eCAL::Logging::Log(log_level_debug4, sample_name + "::UDP Sample Command Type - REGISTER SUBSCRIBER");
-        break;
-      case eCAL::pb::bct_reg_process:
-        eCAL::Logging::Log(log_level_debug4, sample_name + "::UDP Sample Command Type - REGISTER PROCESS");
-        break;
-      case eCAL::pb::bct_reg_service:
-        eCAL::Logging::Log(log_level_debug4, sample_name + "::UDP Sample Command Type - REGISTER SERVICE");
-        break;
-      case eCAL::pb::bct_reg_client:
-        eCAL::Logging::Log(log_level_debug4, sample_name + "::UDP Sample Command Type - REGISTER CLIENT");
-        break;
-      default:
-        eCAL::Logging::Log(log_level_debug4, sample_name + "::UDP Sample Command Type - UNKNOWN");
-        break;
-      }
-#endif
-      // get layer if this is a payload sample
-      eCAL::pb::eTLayerType layer = eCAL::pb::eTLayerType::tl_none;
-      if (m_ecal_sample.cmd_type() == eCAL::pb::eCmdType::bct_set_sample)
-      {
-        if (m_ecal_sample.topic().tlayer_size() > 0)
-        {
-          layer = m_ecal_sample.topic().tlayer(0).type();
-        }
-      }
-      // apply sample
-      ApplySample(m_ecal_sample, layer);
-    }
-  }
-  break;
-  // if we have a header only package 
-  // we create a receive slot and apply it to the receive slot map
-  // to process the following data packages
-  // we do not know the name here unfortunately
-  // so we have to wait for the first payload package :-(
-  case msg_type_header:
-  {
-    // create new receive slot
-    std::shared_ptr<CSampleReceiveSlot> receive_slot(nullptr);
-    receive_slot = std::make_shared<CSampleReceiveSlot>(CSampleReceiveSlot(this));
-    m_receive_slot_map[ecal_message->header.id] = receive_slot;
-    // apply message
-    receive_slot->ApplyMessage(*ecal_message);
-  }
-  break;
-  // if we have a payload package 
-  // we check for an existing receive slot and apply the data to it
-  case msg_type_content:
-  {
-    // first data package ?
-    if (ecal_message->header.num == 0)
-    {
+  switch (ecal_message->header.type) {
+    case msg_type_header_with_content: {
       // read sample_name size
       unsigned short sample_name_size = 0;
       memcpy(&sample_name_size, ecal_message->payload, 2);
       // read sample_name
       std::string sample_name = ecal_message->payload + sizeof(sample_name_size);
 
-      // remove the matching slot if we are not interested in this sample
-      if (!HasSample(sample_name))
-      {
-        auto riter = m_receive_slot_map.find(ecal_message->header.id);
-        if (riter != m_receive_slot_map.end())
+      if (HasSample(sample_name)) {
+        // read sample
+        if (!m_ecal_sample.ParseFromArray(ecal_message->payload + static_cast<size_t>(sizeof(sample_name_size) + sample_name_size), static_cast<int>(static_cast<size_t>(ecal_message->header.len) - (sizeof(sample_name_size) + sample_name_size)))) return(0);
+
+        // get layer if this is a payload sample
+        eCAL::pb::eTLayerType layer = eCAL::pb::eTLayerType::tl_none;
+        if (m_ecal_sample.cmd_type() == eCAL::pb::eCmdType::bct_set_sample)
         {
-#ifndef NDEBUG
-          // log timeouted slot
-          eCAL::Logging::Log(log_level_debug3, "CSampleReceiver::Receive - DISCARD PACKAGE FOR TOPIC: " + sample_name);
-#endif
-          m_receive_slot_map.erase(riter);
-          break;
+          if (m_ecal_sample.topic().tlayer_size() > 0)
+          {
+            layer = m_ecal_sample.topic().tlayer(0).type();
+          }
         }
+        // apply sample
+        ApplySample(m_ecal_sample, layer);
       }
     }
-
-    // process data package
-    auto iter = m_receive_slot_map.find(ecal_message->header.id);
-    if (iter != m_receive_slot_map.end())
-    {
-      // apply message
-      iter->second->ApplyMessage(*ecal_message);
-    }
-  }
-  break;
-  default:
     break;
+    // if we have a header only package
+    // we create a receive slot and apply it to the receive slot map
+    // to process the following data packages
+    // we do not know the name here unfortunately
+    // so we have to wait for the first payload package :-(
+    case msg_type_header: {
+      // create new receive slot
+      std::shared_ptr<CSampleReceiveSlot> receive_slot(nullptr);
+      receive_slot = std::make_shared<CSampleReceiveSlot>(CSampleReceiveSlot(this));
+      m_receive_slot_map[ecal_message->header.id] = receive_slot;
+
+      // Add statistics
+      received[ecal_message->header.id] = 0;
+      total[ecal_message->header.id] = ecal_message->header.num;
+
+      // apply message
+      receive_slot->ApplyMessage(*ecal_message);
+    }
+    break;
+    // if we have a payload package
+    // we check for an existing receive slot and apply the data to it
+    case msg_type_content: {
+      received[ecal_message->header.id]++;
+
+      // first data package ?
+      if (ecal_message->header.num == 0)
+      {
+        // read sample_name size
+        unsigned short sample_name_size = 0;
+        memcpy(&sample_name_size, ecal_message->payload, 2);
+        // read sample_name
+        std::string sample_name = ecal_message->payload + sizeof(sample_name_size);
+
+        // remove the matching slot if we are not interested in this sample
+        if (!HasSample(sample_name))
+        {
+          auto riter = m_receive_slot_map.find(ecal_message->header.id);
+          if (riter != m_receive_slot_map.end())
+          {
+  #ifndef NDEBUG
+            // log timeouted slot
+            eCAL::Logging::Log(log_level_debug3, "CSampleReceiver::Receive - DISCARD PACKAGE FOR TOPIC: " + sample_name);
+  #endif
+            std::cout << received[riter->second->m_message_id] << "," << total[riter->second->m_message_id] << ",fail" <<"\n";
+            m_receive_slot_map.erase(riter);
+            break;
+          }
+        }
+      }
+
+      // process data package
+      auto iter = m_receive_slot_map.find(ecal_message->header.id);
+      if (iter != m_receive_slot_map.end())
+      {
+        // apply message
+        iter->second->ApplyMessage(*ecal_message);
+      }
+    }
+    break;
+    default:
+      break;
   }
 
   // cleanup finished or zombie received slots
@@ -439,6 +411,15 @@ int CSampleReceiver::Process(const char* sample_buffer_, size_t sample_buffer_le
         int32_t total_len = riter->second->GetMessageTotalLength();
         int32_t current_len = riter->second->GetMessageCurrentLength();
 #endif
+        std::string status;
+        if (riter->second->HasCompleted()) {
+          status = "completed";
+        } else if (riter->second->HasAborted()) {
+          status = "aborted";
+        } else {
+          status = "timeout";
+        }
+        std::cout << received[riter->second->m_message_id] << "," << total[riter->second->m_message_id] << "," << status << "\n";
         riter = m_receive_slot_map.erase(riter);
 #ifndef NDEBUG
         // log timeouted slot

@@ -50,11 +50,18 @@ public:
 
   int ApplyMessage(const struct SUDPMessage& ecal_message_);
   bool HasFinished() {return((m_recv_mode == rcm_aborted) || (m_recv_mode == rcm_completed));};
+
+  // For logging statistics
+  bool HasAborted() {return(m_recv_mode == rcm_aborted);};
+  bool HasCompleted() {return(m_recv_mode == rcm_completed);};
+
   bool HasTimedOut(const std::chrono::duration<double>& diff_time_) {m_timeout += diff_time_; return(m_timeout >= std::chrono::milliseconds(NET_UDP_RECBUFFER_TIMEOUT));};
   int32_t GetMessageTotalLength() {return(m_message_total_len);};
   int32_t GetMessageCurrentLength() {return(m_message_curr_len);};
 
   virtual int OnMessageCompleted(std::vector<char> &&msg_buffer_) = 0;
+
+  int32_t           m_message_id;
 
 protected:
   int OnMessageStart(const struct SUDPMessage& ecal_message_);
@@ -72,7 +79,6 @@ protected:
   std::vector<char> m_recv_buffer;
   eReceiveMode      m_recv_mode;
 
-  int32_t           m_message_id;
   int32_t           m_message_total_num;
   int32_t           m_message_total_len;
 
@@ -81,7 +87,6 @@ protected:
 
   eCAL::pb::Sample    m_ecal_sample;
 };
-
 
 class CSampleReceiver
 {
@@ -114,4 +119,8 @@ protected:
   eCAL::pb::Sample     m_ecal_sample;
 
   std::chrono::steady_clock::time_point m_cleanup_start;
+
+  // Store information for each message id
+  std::unordered_map<int32_t, int32_t> received;
+  std::unordered_map<int32_t, int32_t> total;
 };
