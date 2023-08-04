@@ -54,6 +54,8 @@ public:
   // For logging statistics
   bool HasAborted() {return(m_recv_mode == rcm_aborted);};
   bool HasCompleted() {return(m_recv_mode == rcm_completed);};
+  bool IsWaiting() { return(m_recv_mode == rcm_waiting); };
+  bool IsReading() { return(m_recv_mode == rcm_reading); };
 
   bool HasTimedOut(const std::chrono::duration<double>& diff_time_) {m_timeout += diff_time_; return(m_timeout >= std::chrono::milliseconds(NET_UDP_RECBUFFER_TIMEOUT));};
   int32_t GetMessageTotalLength() {return(m_message_total_len);};

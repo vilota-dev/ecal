@@ -456,7 +456,7 @@ int CSampleReceiver::Process(const char* sample_buffer_, size_t sample_buffer_le
     auto first_received = stats_iter->second->m_first_received;
     // If one second has passed since the first packet was received, we print the statistics and remove the entry.
     // Otherwise, we keep the entry and move on.
-    if (now - first_received >= std::chrono::seconds(2)) {
+    if (now - first_received >= std::chrono::seconds(5)) {
       // slot might be null pointer, keep checking for ReceiveSlot
       if (stats_iter->second->slot) {
         std::string status;
@@ -464,10 +464,18 @@ int CSampleReceiver::Process(const char* sample_buffer_, size_t sample_buffer_le
           status = "completed";
         } else if (stats_iter->second->slot->HasAborted()) {
           status = "aborted";
-        } else {
-          status = "timeout";
+        } else if (stats_iter->second->slot->IsWaiting()) {
+          status = "waiting";
+        } else if (stats_iter->second->slot->IsReading()) {
+          status = "reading";
         }
-        std::cout << stats_iter->second->name << "," << stats_iter->second->received << "," << stats_iter->second->total << "," << status << "\n";
+
+        // Print out the statistics
+        std::cout << stats_iter->second->name << ",";
+        std::cout << stats_iter->second->received << ",";
+        std::cout << stats_iter->second->total << ",";
+        std::cout << status << "\n";
+
         stats_iter = m_stats_map.erase(stats_iter);
       } else {
         stats_iter++;
