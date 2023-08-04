@@ -345,6 +345,7 @@ int CSampleReceiver::Process(const char* sample_buffer_, size_t sample_buffer_le
       // Add statistics class. Copy the shared pointer to the ReceiveSlot struct as well.
       // We first check if there is an object for this ID already, since we might get a content packet before
       // the header arrives.
+      // get the name of the ecal_message
       auto stats_iter = m_stats_map.find(ecal_message->header.id);
       if (stats_iter != m_stats_map.end()) {
         stats_iter->second->received++;
@@ -384,6 +385,12 @@ int CSampleReceiver::Process(const char* sample_buffer_, size_t sample_buffer_le
         memcpy(&sample_name_size, ecal_message->payload, 2);
         // read sample_name
         std::string sample_name = ecal_message->payload + sizeof(sample_name_size);
+
+        // Set the name in the stats object
+        auto stats_iter = m_stats_map.find(ecal_message->header.id);
+        if (stats_iter != m_stats_map.end()) {
+          stats_iter->second->name = sample_name;
+        }
 
         // remove the matching slot if we are not interested in this sample
         if (!HasSample(sample_name))
@@ -460,7 +467,7 @@ int CSampleReceiver::Process(const char* sample_buffer_, size_t sample_buffer_le
         } else {
           status = "timeout";
         }
-        std::cout << stats_iter->second->received << "," << stats_iter->second->total << "," << status << "\n";
+        std::cout << stats_iter->second->name << "," << stats_iter->second->received << "," << stats_iter->second->total << "," << status << "\n";
         stats_iter = m_stats_map.erase(stats_iter);
       } else {
         stats_iter++;

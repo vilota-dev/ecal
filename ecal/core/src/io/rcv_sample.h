@@ -104,6 +104,7 @@ struct SampleStats {
   int total;
   std::shared_ptr<CReceiveSlot> slot;
   std::chrono::steady_clock::time_point m_first_received;
+  std::string name{"empty"};
 };
 
 class CSampleReceiver
