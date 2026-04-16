@@ -209,6 +209,15 @@ namespace eCAL
     {
       m_mutex_handle = named_mutex_create(mutex_name.c_str(), m_recoverable);
       m_has_ownership = true;
+
+      // similar fix to https://github.com/eclipse-ecal/ecal/pull/2247
+      if (m_mutex_handle == nullptr)
+      {
+        m_mutex_handle = named_mutex_open(mutex_name.c_str());
+        m_has_ownership = false;
+
+      }
+      
     }
   }
 
